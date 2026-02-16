@@ -412,13 +412,18 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
         }
     }
 
+
     private ReplyKeyboardMarkup menuFor(UserEntity user) {
         List<KeyboardRow> rows = new ArrayList<>();
 
         KeyboardRow row1 = new KeyboardRow();
-        row1.add("Зареєструвати код");
+        if (user.getRole() != UserRole.ADMIN) {
+            row1.add("Зареєструвати код");
+        }
         row1.add("Активна акція");
-        row1.add("Мої квитки");
+        if (user.getRole() != UserRole.ADMIN) {
+            row1.add("Мої квитки");
+        }
         rows.add(row1);
 
         if (user.getRole() == UserRole.ADMIN) {
