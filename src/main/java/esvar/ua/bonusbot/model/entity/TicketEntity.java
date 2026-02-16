@@ -17,8 +17,8 @@ public class TicketEntity {
     @JoinColumn(name = "campaign_id", nullable = false)
     private CampaignEntity campaign;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
     private UserEntity user;
 
     @Column(nullable = false, length = 4)
