@@ -161,6 +161,7 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
             case "➕ Створити акцію" -> adminCreateCampaign(user);
             case "✏️ Редагувати акцію" -> adminEditCampaign(user);
             case "📊 Статистика" -> adminStats(user);
+            case "🧾 Коди акції" -> adminCodes(user);
             case "▶️ Запустити" -> adminStart(user);
             case "⏸ Зупинити" -> adminStop(user);
             case "🏆 Обрати переможця" -> adminPickWinner(user);
@@ -179,7 +180,7 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
             ticketService.registerTicket(user, text);
             antiAbuseService.markSuccessfulRegistration(user);
             sessionService.clear(user.getId());
-            sendText(user.getChatId(), "Код успішно зареєстровано ✅", menuFor(user));
+            sendText(user.getChatId(), "Код успішно активовано ✅", menuFor(user));
         } catch (BanException banException) {
             long sec = Math.max(1, banException.getRemaining().getSeconds());
             sendText(user.getChatId(), "Тимчасове блокування на реєстрацію коду. Залишилось: " + sec + " с.", null);
@@ -244,11 +245,11 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
         if (WIZARD_FIELDS.get(step).equals("maxCodes")) {
             try {
                 int maxCodes = Integer.parseInt(text);
-                if (maxCodes <= 0) {
+                if (maxCodes <= 0 || maxCodes > 10_000) {
                     throw new NumberFormatException();
                 }
             } catch (NumberFormatException e) {
-                sendText(user.getChatId(), "maxCodes має бути додатним цілим числом. Спробуйте ще раз:", null);
+                sendText(user.getChatId(), "maxCodes має бути цілим числом від 1 до 10000. Спробуйте ще раз:", null);
                 return;
             }
         }
@@ -259,14 +260,16 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
         if (step >= WIZARD_FIELDS.size()) {
             String mode = String.valueOf(payload.get("mode"));
             if ("CREATE".equals(mode)) {
-                campaignService.createDraft(fields);
-                sendText(user.getChatId(), "Акцію створено у статусі DRAFT.", menuFor(user));
+                CampaignEntity created = campaignService.createDraft(fields);
+                ticketService.generateCodesForCampaign(created);
+                sendText(user.getChatId(), "Акцію створено у статусі DRAFT. Коди згенеровано автоматично.", menuFor(user));
             } else {
                 CampaignEntity current = campaignService.getCurrent();
                 if (current == null) {
                     sendText(user.getChatId(), "Акції для редагування не знайдено.", menuFor(user));
                 } else {
-                    campaignService.updateFields(current, fields);
+                    CampaignEntity updated = campaignService.updateFields(current, fields);
+                    ticketService.syncGeneratedCodes(updated);
                     sendText(user.getChatId(), "Акцію оновлено.", menuFor(user));
                 }
             }
@@ -358,6 +361,39 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
         sendText(user.getChatId(), sb.toString(), menuFor(user));
     }
 
+
+    private void adminCodes(UserEntity user) {
+        requireAdmin(user);
+        CampaignEntity current = campaignService.getCurrent();
+        if (current == null) {
+            sendText(user.getChatId(), "Немає акції для перегляду кодів.", menuFor(user));
+            return;
+        }
+
+        List<TicketEntity> tickets = ticketService.listCampaignCodes(current);
+        if (tickets.isEmpty()) {
+            sendText(user.getChatId(), "Для поточної акції коди ще не згенеровано.", menuFor(user));
+            return;
+        }
+
+        int maxShown = 200;
+        StringBuilder sb = new StringBuilder();
+        sb.append("🧾 Коди акції \"").append(current.getName()).append("\"\n")
+                .append("Всього: ").append(tickets.size()).append("\n")
+                .append("Активовано: ").append(tickets.stream().filter(t -> t.getUser() != null).count()).append("\n\n");
+
+        tickets.stream().limit(maxShown).forEach(t -> sb
+                .append(t.getCode())
+                .append(t.getUser() == null ? " — доступний" : " — активовано")
+                .append("\n"));
+
+        if (tickets.size() > maxShown) {
+            sb.append("\nПоказано ").append(maxShown).append(" з ").append(tickets.size()).append(" кодів.");
+        }
+
+        sendText(user.getChatId(), sb.toString(), menuFor(user));
+    }
+
     private void adminPickWinner(UserEntity user) {
         requireAdmin(user);
         CampaignEntity current = campaignService.getCurrent();
@@ -387,8 +423,9 @@ public class BonusTelegramBot extends TelegramLongPollingBot {
 
         if (user.getRole() == UserRole.ADMIN) {
             rows.add(one("➕ Створити акцію", "✏️ Редагувати акцію"));
-            rows.add(one("📊 Статистика", "▶️ Запустити"));
-            rows.add(one("⏸ Зупинити", "🏆 Обрати переможця"));
+            rows.add(one("📊 Статистика", "🧾 Коди акції"));
+            rows.add(one("▶️ Запустити", "⏸ Зупинити"));
+            rows.add(one("🏆 Обрати переможця", "Активна акція"));
         }
 
         ReplyKeyboardMarkup keyboard = new ReplyKeyboardMarkup();

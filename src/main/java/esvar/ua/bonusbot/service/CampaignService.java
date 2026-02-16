@@ -89,7 +89,7 @@ public class CampaignService {
 
     @Transactional(readOnly = true)
     public long registeredCount(Long campaignId) {
-        return ticketRepository.countByCampaign_Id(campaignId);
+        return ticketRepository.countByCampaign_IdAndUserIsNotNull(campaignId);
     }
 
     @Transactional(readOnly = true)

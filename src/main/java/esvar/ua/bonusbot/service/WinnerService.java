@@ -41,7 +41,7 @@ public class WinnerService {
             return existing;
         }
 
-        List<TicketEntity> tickets = ticketRepository.findByCampaign_Id(campaign.getId());
+        List<TicketEntity> tickets = ticketRepository.findByCampaign_IdAndUserIsNotNull(campaign.getId());
         if (tickets.isEmpty()) {
             throw new BotException("Немає зареєстрованих квитків для вибору переможця.");
         }
